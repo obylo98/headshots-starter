@@ -135,10 +135,16 @@ export async function POST(request: Request) {
         return NextResponse.json({ message: `Unknown price ${priceId}` }, { status: 400 });
       }
 
-      // Atomic increment (creates the credits row if it doesn't exist).
-      const { error } = await supabase.rpc("add_credits", {
+      // Records the payment and adds credits exactly once, keyed by the
+      // checkout session id, so Stripe's webhook retries can't double-credit.
+      const { error } = await supabase.rpc("grant_payment_credits", {
         p_user_id: userId,
-        p_amount: totalCreditsPurchased,
+        p_provider: "stripe",
+        p_reference: checkoutSessionCompleted.id,
+        p_amount: checkoutSessionCompleted.amount_total ?? 0,
+        p_currency: (checkoutSessionCompleted.currency ?? "usd").toUpperCase(),
+        p_credits: totalCreditsPurchased,
+        p_pack_id: priceId,
       });
 
       if (error) {

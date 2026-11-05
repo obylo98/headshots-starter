@@ -24,7 +24,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDropzone } from "react-dropzone";
 
-const stripeIsConfigured = process.env.NEXT_PUBLIC_STRIPE_IS_ENABLED === "true";
+import { creditsEnabled } from "@/lib/config";
 
 type SelectedFile = { file: File; preview: string };
 
@@ -210,7 +210,7 @@ export default function GenerateHeadshotsZone() {
                 <span className="font-semibold">{m.name}</span>
                 <span className="text-xs text-muted-foreground">{m.provider}</span>
                 <span className="text-xs mt-1">{m.description}</span>
-                {stripeIsConfigured && (
+                {creditsEnabled && (
                   <span className="text-xs text-muted-foreground mt-2">
                     {m.creditsPerImage} credit{m.creditsPerImage > 1 ? "s" : ""} / image
                   </span>
@@ -295,7 +295,7 @@ export default function GenerateHeadshotsZone() {
         <Button type="submit" className="w-full" isLoading={isSubmitting} disabled={isSubmitting}>
           {isSubmitting
             ? progress
-            : `Generate ${imageCount} headshots${stripeIsConfigured ? ` · ${cost} credits` : ""}`}
+            : `Generate ${imageCount} headshots${creditsEnabled ? ` · ${cost} credits` : ""}`}
         </Button>
         {validationError && !isSubmitting && (
           <p className="text-center text-xs text-muted-foreground">{validationError}</p>

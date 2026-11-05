@@ -11,7 +11,10 @@ export type AiModel = {
   description: string;
   /** fal.ai endpoint id */
   endpoint: string;
-  /** Credits charged per generated image (only used when Stripe is enabled). */
+  /**
+   * Credits charged per generated image (only when payments are enabled).
+   * 1 credit is worth roughly $0.04 of fal cost; see lib/credit-packs.ts.
+   */
   creditsPerImage: number;
   /** Rough generation time in seconds, used for the progress bar estimate. */
   expectedSeconds: number;
@@ -34,7 +37,7 @@ export const AI_MODELS: AiModel[] = [
     description: "Best likeness — keeps your face most accurate. Premium quality.",
     endpoint: "fal-ai/nano-banana-pro/edit",
     expectedSeconds: 45,
-    creditsPerImage: 2,
+    creditsPerImage: 4, // fal: $0.15 per image (1K)
     maxReferenceImages: 10,
     badge: "Best likeness",
     buildInput: ({ prompt, imageUrls, numImages }) => ({
@@ -53,7 +56,7 @@ export const AI_MODELS: AiModel[] = [
     description: "Sharp, high-resolution photos with polished commercial lighting.",
     endpoint: "bytedance/seedream/v5/pro/edit",
     expectedSeconds: 35,
-    creditsPerImage: 1,
+    creditsPerImage: 2, // fal: $0.0675 + $0.0045 per extra reference photo
     maxReferenceImages: 10,
     buildInput: ({ prompt, imageUrls, numImages }) => ({
       prompt,
@@ -72,7 +75,7 @@ export const AI_MODELS: AiModel[] = [
     description: "Fast and affordable, with natural skin texture.",
     endpoint: "blackforestlabs/flux-3/klein/edit-image",
     expectedSeconds: 15,
-    creditsPerImage: 1,
+    creditsPerImage: 1, // fal: ~$0.011 per image (1.5K tier)
     maxReferenceImages: 10,
     badge: "Fastest",
     buildInput: ({ prompt, imageUrls, numImages }) => ({

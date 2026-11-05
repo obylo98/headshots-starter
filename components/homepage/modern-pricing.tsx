@@ -5,6 +5,8 @@ import type React from "react"
 import { Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { AI_MODELS } from "@/lib/ai-models"
+import { CREDIT_PACKS, formatNaira } from "@/lib/credit-packs"
 
 interface PricingFeature {
   icon: React.ReactNode
@@ -23,31 +25,21 @@ interface PricingTier {
 }
 
 export default function ModernPricing() {
-  const tiers: PricingTier[] = [
-    {
-      title: "Starter",
-      price: "1 Credit",
-      description: "Perfect for individuals looking to enhance their online presence.",
-      features: ["4 AI Headshots"],
-      buttonText: "Choose Starter",
-    },
-    {
-      title: "Basic",
-      price: "3 Credits",
-      description: "Ideal for professionals requiring frequent updates to their profiles.",
-      features: ["12 AI Headshots"],
-      buttonText: "Choose Basic",
-      popular: true,
-    },
-    {
-      title: "Premium",
-      price: "5 Credits",
-      description: "The best value with unlimited possibilities.",
-      features: ["20 AI Headshots"],
-      buttonText: "Choose Premium",
-      bestValue: true,
-    },
-  ]
+  // Built from lib/credit-packs.ts so the homepage always matches checkout.
+  const tiers: PricingTier[] = CREDIT_PACKS.map((pack, i) => ({
+    title: pack.name,
+    price: formatNaira(pack.priceNgn),
+    description: pack.description,
+    features: [
+      `${pack.credits} credits`,
+      ...AI_MODELS.map(
+        (m) => `Up to ${Math.floor(pack.credits / m.creditsPerImage)} ${m.name} headshots`
+      ),
+    ],
+    buttonText: `Choose ${pack.name}`,
+    popular: pack.popular,
+    bestValue: i === CREDIT_PACKS.length - 1,
+  }))
 
   return (
     <div className="mx-auto max-w-4xl px-4">

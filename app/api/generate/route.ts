@@ -18,7 +18,7 @@ import { z } from "zod";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const stripeIsEnabled = process.env.NEXT_PUBLIC_STRIPE_IS_ENABLED === "true";
+import { creditsEnabled } from "@/lib/config";
 
 // Only accept selfies uploaded to our own Vercel Blob store.
 const isBlobUrl = (value: string) => {
@@ -70,7 +70,7 @@ export async function POST(request: Request) {
   }
 
   const admin = createAdminClient();
-  const cost = stripeIsEnabled ? creditsForShoot(aiModel, styles.length) : 0;
+  const cost = creditsEnabled ? creditsForShoot(aiModel, styles.length) : 0;
 
   // 1. Charge credits up front (atomic; refunded below or on failure).
   if (cost > 0) {

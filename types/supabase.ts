@@ -201,6 +201,18 @@ export interface Database {
         Args: { p_user_id: string; p_amount: number }
         Returns: number | null
       }
+      grant_payment_credits: {
+        Args: {
+          p_user_id: string
+          p_provider: string
+          p_reference: string
+          p_amount: number
+          p_currency: string
+          p_credits: number
+          p_pack_id?: string | null
+        }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
