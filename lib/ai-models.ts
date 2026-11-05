@@ -13,6 +13,8 @@ export type AiModel = {
   endpoint: string;
   /** Credits charged per generated image (only used when Stripe is enabled). */
   creditsPerImage: number;
+  /** Rough generation time in seconds, used for the progress bar estimate. */
+  expectedSeconds: number;
   /** Max reference photos the endpoint accepts. */
   maxReferenceImages: number;
   badge?: string;
@@ -31,6 +33,7 @@ export const AI_MODELS: AiModel[] = [
     provider: "Google",
     description: "Best likeness — keeps your face most accurate. Premium quality.",
     endpoint: "fal-ai/nano-banana-pro/edit",
+    expectedSeconds: 45,
     creditsPerImage: 2,
     maxReferenceImages: 10,
     badge: "Best likeness",
@@ -49,6 +52,7 @@ export const AI_MODELS: AiModel[] = [
     provider: "ByteDance",
     description: "Sharp, high-resolution photos with polished commercial lighting.",
     endpoint: "bytedance/seedream/v5/pro/edit",
+    expectedSeconds: 35,
     creditsPerImage: 1,
     maxReferenceImages: 10,
     buildInput: ({ prompt, imageUrls, numImages }) => ({
@@ -67,6 +71,7 @@ export const AI_MODELS: AiModel[] = [
     provider: "Black Forest Labs",
     description: "Fast and affordable, with natural skin texture.",
     endpoint: "blackforestlabs/flux-3/klein/edit-image",
+    expectedSeconds: 15,
     creditsPerImage: 1,
     maxReferenceImages: 10,
     badge: "Fastest",
@@ -150,12 +155,13 @@ export const MAX_REFERENCE_IMAGES = 10;
 export const MAX_REFERENCE_FILE_BYTES = 10 * 1024 * 1024;
 
 export function buildHeadshotPrompt(style: HeadshotStyle): string {
+  // Phrased as a plain photo-editing instruction: heavy "preserve identity"
+  // wording makes some models (notably Nano Banana Pro) refuse more often.
   return [
-    "Professional headshot photograph of the exact same person shown in the reference images.",
-    "Preserve their identity precisely: same face shape, facial features, skin tone, eye colour, hairline and hairstyle, age and any distinctive marks.",
-    `The person is ${style.prompt}.`,
-    "Head-and-shoulders framing, facing the camera, sharp focus on the eyes, natural realistic skin texture, photorealistic, shot on an 85mm lens.",
-    "Only one person in the image. No text, no watermark.",
+    "Turn the person in these photos into a professional studio headshot.",
+    "Keep their face, hairstyle, skin tone and age the same so they look like themselves.",
+    `They are ${style.prompt}.`,
+    "Head-and-shoulders portrait, looking at the camera, sharp focus, natural skin texture, realistic photo taken with an 85mm lens.",
   ].join(" ");
 }
 

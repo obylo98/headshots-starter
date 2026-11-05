@@ -1,7 +1,8 @@
 import "server-only";
 
-import { getAiModel } from "@/lib/ai-models";
+import { buildHeadshotPrompt, getAiModel, getHeadshotStyle } from "@/lib/ai-models";
 import { AdminClient, getFal } from "@/lib/server/clients";
+import { generationRequestRow as GenerationRequest } from "@/types/utils";
 import { put } from "@vercel/blob";
 
 // A request stuck in "saving" this long (e.g. the function was killed
@@ -9,6 +10,8 @@ import { put } from "@vercel/blob";
 const STALE_SAVING_MS = 5 * 60 * 1000;
 // Give up on a request that has not completed after this long.
 const REQUEST_TIMEOUT_MS = 30 * 60 * 1000;
+// Total tries per style (first attempt + retries).
+const MAX_ATTEMPTS_PER_STYLE = 2;
 
 type FalImage = { url: string; content_type?: string };
 
@@ -16,7 +19,15 @@ function errorMessage(e: unknown): string {
   if (e && typeof e === "object") {
     const body = (e as { body?: { detail?: unknown } }).body;
     if (body?.detail) {
-      return typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+      if (typeof body.detail === "string") return body.detail;
+      // fal validation errors: [{ loc, msg, type, input, ... }]
+      if (Array.isArray(body.detail)) {
+        const msgs = body.detail
+          .map((d) => (d && typeof d === "object" && "msg" in d ? String((d as { msg: unknown }).msg) : null))
+          .filter(Boolean);
+        if (msgs.length) return msgs.join("; ");
+      }
+      return JSON.stringify(body.detail).slice(0, 500);
     }
     if ("message" in e && typeof (e as Error).message === "string") {
       return (e as Error).message;
@@ -30,6 +41,60 @@ async function markFailed(admin: AdminClient, id: number, error: string) {
     .from("generation_requests")
     .update({ status: "failed", error: error.slice(0, 1000), updated_at: new Date().toISOString() })
     .eq("id", id);
+}
+
+/**
+ * Models sometimes refuse or return nothing for a request that works on a
+ * second try. Re-submit the same style once before giving up. The old row is
+ * kept with status "retried" (not refunded, not counted as failed).
+ */
+async function retryOrFail(admin: AdminClient, req: GenerationRequest, error: string) {
+  const { count } = await admin
+    .from("generation_requests")
+    .select("id", { count: "exact", head: true })
+    .eq("model_id", req.model_id)
+    .eq("style", req.style ?? "");
+
+  const style = req.style ? getHeadshotStyle(req.style) : undefined;
+  if ((count ?? 0) >= MAX_ATTEMPTS_PER_STYLE || !style) {
+    await markFailed(admin, req.id, error);
+    return;
+  }
+
+  try {
+    const [{ data: shoot }, { data: samples }] = await Promise.all([
+      admin.from("models").select("ai_model").eq("id", req.model_id).single(),
+      admin.from("samples").select("uri").eq("modelId", req.model_id),
+    ]);
+    const aiModel = getAiModel(shoot?.ai_model);
+    if (!aiModel || !samples?.length) throw new Error("Shoot data missing for retry");
+
+    const { request_id } = await getFal().queue.submit(aiModel.endpoint, {
+      input: aiModel.buildInput({
+        prompt: buildHeadshotPrompt(style),
+        imageUrls: samples.map((s) => s.uri),
+        numImages: req.num_images,
+      }) as never,
+    });
+
+    const { error: insertError } = await admin.from("generation_requests").insert({
+      model_id: req.model_id,
+      request_id,
+      endpoint: aiModel.endpoint,
+      style: req.style,
+      num_images: req.num_images,
+    });
+    if (insertError) throw insertError;
+
+    await admin
+      .from("generation_requests")
+      .update({ status: "retried", error: error.slice(0, 1000), updated_at: new Date().toISOString() })
+      .eq("id", req.id);
+    console.log(`[shoots] retrying style "${req.style}" for shoot ${req.model_id}: ${error}`);
+  } catch (e) {
+    console.error("[shoots] retry submit failed", e);
+    await markFailed(admin, req.id, error);
+  }
 }
 
 /** Copy a fal output image into Vercel Blob so it never expires. */
@@ -94,7 +159,7 @@ export async function syncShoot(admin: AdminClient, modelId: number) {
         const result = await fal.queue.result(req.endpoint, { requestId: req.request_id });
         const images = ((result.data as { images?: FalImage[] })?.images ?? []).filter((i) => i?.url);
         if (images.length === 0) {
-          await markFailed(admin, req.id, "The AI model returned no images (it may have been blocked by the safety filter)");
+          await retryOrFail(admin, req, "The AI model returned no images (it may have been blocked by the safety filter)");
           return;
         }
 
@@ -112,7 +177,7 @@ export async function syncShoot(admin: AdminClient, modelId: number) {
           .eq("id", req.id);
       } catch (e) {
         console.error("fal result error", req.request_id, e);
-        await markFailed(admin, req.id, errorMessage(e));
+        await retryOrFail(admin, req, errorMessage(e));
       }
     })
   );

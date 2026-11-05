@@ -8,6 +8,7 @@ import { imageRow, modelRow, sampleRow } from "@/types/utils";
 import { Download } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import GenerationProgress, { RequestState } from "./GenerationProgress";
 
 const POLL_INTERVAL_MS = 4000;
 
@@ -17,7 +18,6 @@ type ClientSideModelProps = {
   samples: sampleRow[];
 };
 
-type RequestState = { style: string | null; status: string; error: string | null };
 
 export function StatusBadge({ status }: { status: string }) {
   return (
@@ -102,9 +102,12 @@ export default function ClientSideModel({ serverModel, serverImages, samples }: 
       <section className="flex flex-col gap-3">
         <h2 className="text-xl">Results</h2>
         {isProcessing && (
-          <p className="text-sm text-muted-foreground">
-            Generating with {aiModel?.name ?? "AI"}. This usually takes under a minute, and you can leave this page.
-          </p>
+          <GenerationProgress
+            aiModel={aiModel}
+            styles={model.styles ?? []}
+            requests={requests}
+            startedAt={model.created_at}
+          />
         )}
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
           {images.map((image) => (
