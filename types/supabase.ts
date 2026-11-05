@@ -37,6 +37,52 @@ export interface Database {
           }
         ]
       }
+      generation_requests: {
+        Row: {
+          created_at: string
+          endpoint: string
+          error: string | null
+          id: number
+          model_id: number
+          num_images: number
+          request_id: string
+          status: string
+          style: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          endpoint: string
+          error?: string | null
+          id?: number
+          model_id: number
+          num_images?: number
+          request_id: string
+          status?: string
+          style?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          endpoint?: string
+          error?: string | null
+          id?: number
+          model_id?: number
+          num_images?: number
+          request_id?: string
+          status?: string
+          style?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "generation_requests_model_id_fkey"
+            columns: ["model_id"]
+            referencedRelation: "models"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       images: {
         Row: {
           created_at: string
@@ -67,29 +113,41 @@ export interface Database {
       }
       models: {
         Row: {
+          ai_model: string | null
           created_at: string
+          credits_used: number
+          error: string | null
           id: number
           modelId: string | null
           name: string | null
           status: string
+          styles: string[]
           type: string | null
           user_id: string | null
         }
         Insert: {
+          ai_model?: string | null
           created_at?: string
+          credits_used?: number
+          error?: string | null
           id?: number
           modelId?: string | null
           name?: string | null
           status?: string
+          styles?: string[]
           type?: string | null
           user_id?: string | null
         }
         Update: {
+          ai_model?: string | null
           created_at?: string
+          credits_used?: number
+          error?: string | null
           id?: number
           modelId?: string | null
           name?: string | null
           status?: string
+          styles?: string[]
           type?: string | null
           user_id?: string | null
         }
@@ -135,7 +193,14 @@ export interface Database {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      add_credits: {
+        Args: { p_user_id: string; p_amount: number }
+        Returns: number
+      }
+      deduct_credits: {
+        Args: { p_user_id: string; p_amount: number }
+        Returns: number | null
+      }
     }
     Enums: {
       [_ in never]: never

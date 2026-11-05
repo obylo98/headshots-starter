@@ -49,7 +49,7 @@ export default function Footer() {
               </li>
               <li>
                 <Link 
-                  href="https://docs.astria.ai/docs/api/pack/pack/" 
+                  href="https://fal.ai/docs" 
                   className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                   target="_blank"
                 >
@@ -98,11 +98,11 @@ export default function Footer() {
             <p className="text-sm text-muted-foreground">
               Open-source powered by{" "}
               <Link
-                href="https://www.astria.ai/"
+                href="https://fal.ai/"
                 className="text-primary hover:underline"
                 target="_blank"
               >
-                Astria
+                fal.ai
               </Link>
               ,{" "}
               <Link

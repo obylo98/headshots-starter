@@ -10,3 +10,5 @@ export type modelRowWithSamples = modelRow & {
 export type imageRow = Database["public"]["Tables"]["images"]["Row"];
 
 export type creditsRow = Database["public"]["Tables"]["credits"]["Row"];
+
+export type generationRequestRow = Database["public"]["Tables"]["generation_requests"]["Row"];

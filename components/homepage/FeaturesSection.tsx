@@ -14,7 +14,7 @@ const features = [
   },
   {
     title: "Fast Delivery",
-    description: "Receive your photos in just 20 minutes",
+    description: "Receive your photos in about a minute",
     icon: <Clock className="h-6 w-6" />
   },
   {

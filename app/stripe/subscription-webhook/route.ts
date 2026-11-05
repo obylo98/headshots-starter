@@ -130,58 +130,23 @@ export async function POST(request: Request) {
 
       console.log("totalCreditsPurchased: " + totalCreditsPurchased);
 
-      const { data: existingCredits } = await supabase
-        .from("credits")
-        .select("*")
-        .eq("user_id", userId)
-        .single();
+      if (!Number.isFinite(totalCreditsPurchased) || totalCreditsPurchased <= 0) {
+        console.error("Unknown price id or quantity", { priceId, quantity });
+        return NextResponse.json({ message: `Unknown price ${priceId}` }, { status: 400 });
+      }
 
-      // If user has existing credits, add to it.
-      if (existingCredits) {
-        const newCredits = existingCredits.credits + totalCreditsPurchased;
-        const { data, error } = await supabase
-          .from("credits")
-          .update({
-            credits: newCredits,
-          })
-          .eq("user_id", userId);
+      // Atomic increment (creates the credits row if it doesn't exist).
+      const { error } = await supabase.rpc("add_credits", {
+        p_user_id: userId,
+        p_amount: totalCreditsPurchased,
+      });
 
-        if (error) {
-          console.log(error);
-          return NextResponse.json(
-            {
-              message: `Error updating credits: ${JSON.stringify(error)}. data=${data}`,
-            },
-            {
-              status: 400,
-            }
-          );
-        }
-
+      if (error) {
+        console.error(error);
         return NextResponse.json(
-          {
-            message: "success",
-          },
-          { status: 200 }
+          { message: `Error adding credits: ${JSON.stringify(error)}` },
+          { status: 500 }
         );
-      } else {
-        // Else create new credits row.
-        const { data, error } = await supabase.from("credits").insert({
-          user_id: userId,
-          credits: totalCreditsPurchased,
-        });
-
-        if (error) {
-          console.log(error);
-          return NextResponse.json(
-            {
-              message: `Error creating credits: ${error}\n ${data}`,
-            },
-            {
-              status: 400,
-            }
-          );
-        }
       }
 
       return NextResponse.json(

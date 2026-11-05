@@ -1,52 +1,34 @@
 "use client";
+
 import { Button } from "@/components/ui/button";
 import { Database } from "@/types/supabase";
-import { modelRowWithSamples } from "@/types/utils";
-import { createClient } from "@supabase/supabase-js";
+import { modelRow, modelRowWithSamples } from "@/types/utils";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { FaImages } from "react-icons/fa";
 import ModelsTable from "../ModelsTable";
 
-const packsIsEnabled = process.env.NEXT_PUBLIC_TUNE_TYPE === "packs";
-
-export const revalidate = 0;
-
 type ClientSideModelsListProps = {
-  serverModels: modelRowWithSamples[] | [];
+  serverModels: modelRowWithSamples[];
+  userId: string;
 };
 
-export default function ClientSideModelsList({
-  serverModels,
-}: ClientSideModelsListProps) {
-  const supabase = createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL as string,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string
-  );
+export default function ClientSideModelsList({ serverModels, userId }: ClientSideModelsListProps) {
   const [models, setModels] = useState<modelRowWithSamples[]>(serverModels);
 
+  // Keep statuses live (only this user's shoots).
   useEffect(() => {
+    const supabase = createClientComponentClient<Database>();
     const channel = supabase
-      .channel("realtime-models")
+      .channel(`models-${userId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "models" },
-        async (payload: any) => {
-          const samples = await supabase
-            .from("samples")
-            .select("*")
-            .eq("modelId", payload.new.id);
-
-          const newModel: modelRowWithSamples = {
-            ...payload.new,
-            samples: samples.data,
-          };
-
-          const dedupedModels = models.filter(
-            (model) => model.id !== payload.old?.id
+        { event: "UPDATE", schema: "public", table: "models", filter: `user_id=eq.${userId}` },
+        (payload: { new: modelRow }) => {
+          setModels((current) =>
+            current.map((m) => (m.id === payload.new.id ? { ...m, ...payload.new } : m))
           );
-
-          setModels([...dedupedModels, newModel]);
         }
       )
       .subscribe();
@@ -54,36 +36,30 @@ export default function ClientSideModelsList({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [supabase, models, setModels]);
+  }, [userId]);
+
+  if (models.length === 0) {
+    return (
+      <div className="flex flex-col gap-4 items-center py-12">
+        <FaImages size={64} className="text-gray-500" />
+        <h1 className="text-2xl">Create your first AI headshots</h1>
+        <p className="text-muted-foreground text-sm">Upload a few selfies, pick a model and style, and get results in about a minute.</p>
+        <Link href="/overview/generate">
+          <Button size="lg">Generate headshots</Button>
+        </Link>
+      </div>
+    );
+  }
 
   return (
-    <div id="train-model-container" className="w-full">
-      {models && models.length > 0 && (
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-row gap-4 w-full justify-between items-center text-center">
-            <h1>Your models</h1>
-            <Link href={packsIsEnabled ? "/overview/packs" : "/overview/models/train/raw-tune"} className="w-fit">
-              <Button size={"sm"}>
-                Train model
-              </Button>
-            </Link>
-          </div>
-          <ModelsTable models={models} />
-        </div>
-      )}
-      {models && models.length === 0 && (
-        <div className="flex flex-col gap-4 items-center">
-          <FaImages size={64} className="text-gray-500" />
-          <h1 className="text-2xl">
-            Get started by training your first model.
-          </h1>
-          <div>
-            <Link href={packsIsEnabled ? "/overview/packs" : "/overview/models/train/raw-tune"}>
-              <Button size={"lg"}>Train model</Button>
-            </Link>
-          </div>
-        </div>
-      )}
+    <div className="flex flex-col gap-4 w-full">
+      <div className="flex flex-row gap-4 w-full justify-between items-center">
+        <h1 className="text-xl">Your shoots</h1>
+        <Link href="/overview/generate" className="w-fit">
+          <Button size="sm">New shoot</Button>
+        </Link>
+      </div>
+      <ModelsTable models={models} />
     </div>
   );
 }

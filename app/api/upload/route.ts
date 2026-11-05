@@ -1,61 +1,41 @@
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+import { MAX_REFERENCE_FILE_BYTES } from "@/lib/ai-models";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
-import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 
-// Configure Vercel Blob (#7 step in the README)
+// Issues short-lived tokens so the browser can upload selfies straight to
+// Vercel Blob (see README "Configure Vercel Blob").
 export async function POST(request: Request): Promise<NextResponse> {
   const body = (await request.json()) as HandleUploadBody;
-
-  const supabase = createServerComponentClient({ cookies });
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
   try {
     const jsonResponse = await handleUpload({
       body,
       request,
-      onBeforeGenerateToken: async (
-        pathname: string
-        /* clientPayload?: string, */
-      ) => {
-        // Generate a client token for the browser to upload the file
-        // ⚠️ Authenticate and authorize users before generating the token.
-        // Otherwise, you're allowing anonymous uploads.
-        if (!user) {
-          throw new Error("Unauthorized");
-        }
+      onBeforeGenerateToken: async () => {
+        // Only signed-in users may upload. (The completion callback below is
+        // called by Vercel without cookies, so auth is checked only here.)
+        const supabase = createRouteHandlerClient({ cookies });
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) throw new Error("Unauthorized");
+
         return {
-          allowedContentTypes: ["image/jpeg", "image/png", "image/gif"],
-          tokenPayload: JSON.stringify({
-            userId: user.id, // Including the user ID in the token payload
-            // optional, sent to your server on upload completion
-            // you could pass a user id from auth, or a value from clientPayload
-          }),
+          allowedContentTypes: ["image/jpeg", "image/png", "image/webp"],
+          maximumSizeInBytes: MAX_REFERENCE_FILE_BYTES,
+          addRandomSuffix: true,
+          tokenPayload: JSON.stringify({ userId: user.id }),
         };
       },
-      onUploadCompleted: async ({ blob, tokenPayload }) => {
-        // Get notified of client upload completion
-        // ⚠️ This will not work on `localhost` websites,
-        // Use ngrok or similar to get the full upload flow
-        console.log("blob upload completed", blob, tokenPayload);
-
-        try {
-          // Run any logic after the file upload completed
-          // const { userId } = JSON.parse(tokenPayload);
-          // await db.update({ avatar: blob.url, userId });
-        } catch (error) {
-          throw new Error("Could not update user");
-        }
+      onUploadCompleted: async () => {
+        // Nothing to do: the generate endpoint records the URLs.
       },
     });
 
     return NextResponse.json(jsonResponse);
   } catch (error) {
-    return NextResponse.json(
-      { error: (error as Error).message },
-      { status: 400 } // The webhook will retry 5 times waiting for a 200
-    );
+    return NextResponse.json({ error: (error as Error).message }, { status: 400 });
   }
 }

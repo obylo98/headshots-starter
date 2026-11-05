@@ -76,7 +76,7 @@ export default function FAQSection() {
     {
       question: "How quickly will I receive my headshots?",
       answer:
-        "Standard processing time is approximately 20 minutes. Premium plan users receive priority processing. Once your headshots are ready, you'll receive an email notification with a link to view and download your images.",
+        "Most headshots are ready in about a minute, and you can watch them appear in your dashboard as they finish. You can leave the page and come back any time to view and download your images.",
     },
   ]
 

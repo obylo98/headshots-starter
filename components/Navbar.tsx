@@ -20,7 +20,6 @@ import { ThemeToggle } from "./homepage/theme-toggle";
 export const dynamic = "force-dynamic";
 
 const stripeIsConfigured = process.env.NEXT_PUBLIC_STRIPE_IS_ENABLED === "true";
-const packsIsEnabled = process.env.NEXT_PUBLIC_TUNE_TYPE === "packs";
 export const revalidate = 0;
 
 export default async function Navbar() {
@@ -49,11 +48,9 @@ export default async function Navbar() {
             <Link href="/overview" className="text-sm font-medium hover:text-primary transition-colors">
               Home
             </Link>
-            {packsIsEnabled && (
-              <Link href="/overview/packs" className="text-sm font-medium hover:text-primary transition-colors">
-                Packs
-              </Link>
-            )}
+            <Link href="/overview/generate" className="text-sm font-medium hover:text-primary transition-colors">
+              New shoot
+            </Link>
             {stripeIsConfigured && (
               <Link href="/get-credits" className="text-sm font-medium hover:text-primary transition-colors">
                 Get Credits
@@ -79,7 +76,7 @@ export default async function Navbar() {
           {user && (
             <div className="flex items-center gap-4">
               {stripeIsConfigured && (
-                <ClientSideCredits creditsRow={credits ? credits : null} />
+                <ClientSideCredits creditsRow={credits ?? null} userId={user.id} />
               )}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

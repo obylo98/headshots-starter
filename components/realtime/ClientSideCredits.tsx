@@ -2,37 +2,26 @@
 
 import { Database } from "@/types/supabase";
 import { creditsRow } from "@/types/utils";
-import { createClient } from "@supabase/supabase-js";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { useEffect, useState } from "react";
-
-export const revalidate = 0;
 
 type ClientSideCreditsProps = {
   creditsRow: creditsRow | null;
+  userId: string;
 };
 
-export default function ClientSideCredits({
-  creditsRow,
-}: ClientSideCreditsProps) {
-
-  if (!creditsRow) return (
-    <p>Credits: 0</p>
-  )
-
-  const supabase = createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL as string,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string
-  );
-  const [credits, setCredits] = useState<creditsRow>(creditsRow);
+export default function ClientSideCredits({ creditsRow, userId }: ClientSideCreditsProps) {
+  const [credits, setCredits] = useState<number>(creditsRow?.credits ?? 0);
 
   useEffect(() => {
+    const supabase = createClientComponentClient<Database>();
     const channel = supabase
-      .channel("realtime credits")
+      .channel(`credits-${userId}`)
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "credits" },
-        (payload: { new: creditsRow }) => {
-          setCredits(payload.new);
+        { event: "*", schema: "public", table: "credits", filter: `user_id=eq.${userId}` },
+        (payload: { new: Partial<creditsRow> }) => {
+          if (typeof payload.new?.credits === "number") setCredits(payload.new.credits);
         }
       )
       .subscribe();
@@ -40,11 +29,7 @@ export default function ClientSideCredits({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [supabase, credits, setCredits]);
+  }, [userId]);
 
-  if (!credits) return null;
-
-  return (
-    <p>Credits: {credits.credits}</p>
-  );
+  return <p className="text-sm">Credits: {credits}</p>;
 }

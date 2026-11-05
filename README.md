@@ -8,23 +8,26 @@ This project was built to give developers & makers a great starting point into b
 
 [![Headshot AI Demo](/public/new-demo.png)](https://headshots-starter.vercel.app/)
 
-## Incoming changes
+## Multi-model generation with fal.ai (replaces Astria)
 
-Incoming [PR]((https://github.com/astriaai/headshots-starter/pull/121)) has been merged to allow usage of  Astria's packs API which helps you avoid hardcoding prompts in your code as well as offering different packs of prompts, and switching to the new Flux model fine-tuning easily.
-Read more on advantage of using packs [Astria's documentation](https://docs.astria.ai/docs/api/pack/pack/).
+Headshots are now generated through [fal.ai](https://fal.ai) using reference-image models. Nothing is trained, and results are ready in about a minute. Each user picks one of these models per shoot:
 
-When migrating to the new packs api, add to your vercel environment:
-```text
-NEXT_PUBLIC_TUNE_TYPE=packs
-PACK_QUERY_TYPE=both
-```
+| Model | fal endpoint | Credits / image |
+|---|---|---|
+| Nano Banana Pro (Google) | `fal-ai/nano-banana-pro/edit` | 2 |
+| Seedream 5.0 Pro (ByteDance) | `bytedance/seedream/v5/pro/edit` | 1 |
+| FLUX.3 Klein (Black Forest Labs) | `blackforestlabs/flux-3/klein/edit-image` | 1 |
 
-![Headshot AI Packs](assets/headshots-packs.png)
-Here is how it looks
+Models, prompts, styles and credit prices all live in [`lib/ai-models.ts`](lib/ai-models.ts).
 
-## Important Environment Variable Change
+**New Supabase project?** Run [`supabase/setup_fresh_project.sql`](supabase/setup_fresh_project.sql) in the Supabase SQL editor. It creates every table, security rule and credit function.
 
-**Note:** The environment variable `VERCEL_URL` has been renamed to `DEPLOYMENT_URL` for consistency across the codebase. If you're updating from a previous version, please update your environment variables accordingly. This change makes the application more platform-agnostic and clearer for deployments on any hosting provider, not just Vercel.
+**Migrating from the Astria version:**
+1. Run [`supabase/migrations/20261104000000_fal_multi_model.sql`](supabase/migrations/20261104000000_fal_multi_model.sql) in the Supabase SQL editor.
+2. Add `FAL_KEY` to your environment ([get a key](https://fal.ai/dashboard/keys)).
+3. Remove the old variables, which are no longer used: `ASTRIA_API_KEY`, `ASTRIA_TEST_MODE`, `PACK_QUERY_TYPE`, `NEXT_PUBLIC_TUNE_TYPE`, `APP_WEBHOOK_SECRET`, `DEPLOYMENT_URL`, `DEPLOYMENT_PROVIDER`, `RESEND_API_KEY`.
+
+No webhooks are needed, so local development works without ngrok. The results page polls `/api/shoots/[id]`, which collects finished images from fal's queue and copies them into Vercel Blob.
 
 ## How It Works
 
@@ -32,10 +35,9 @@ Live demo **[here](https://getheadshots.ai)**.
 
 The app is powered by:
 
-- 🚀 [Astria](https://www.astria.ai/) for AI model training & inference
+- 🚀 [fal.ai](https://fal.ai/) for AI image generation (FLUX.3, Nano Banana Pro, Seedream 5.0 Pro)
 - ▲ [Next.js](https://nextjs.org/) for app and landing page
 - 🔋 [Supabase](https://supabase.com/) for DB & Auth
-- 📩 [Resend](https://resend.com/) (optional) to email user when headshots are ready
 - ⭐️ [Shadcn](https://ui.shadcn.com/) with [Tailwind CSS](https://tailwindcss.com/) for styles
 - ▲ [Vercel](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fleap-ai%2Fheadshots-starter%2Ftree%2Fmain&env=ASTRIA_API_KEY,APP_WEBHOOK_SECRET&envDescription=Set%20up%20environment%20variables%20for%20Leap%20AI%20and%20redirect%20URL%20in%20Supabase%20Auth%20dashboard.%20See%20.env.local.example%20for%20full%20config%20with%20Resend%20and%20Stripe.&envLink=https%3A%2F%2Fgithub.com%2Fleap-ai%2Fheadshots-starter%2Fblob%2Fmain%2F.env.local.example&project-name=headshots-starter-clone&repository-name=headshots-starter-clone&demo-title=AI%20Headshot%20Generator&demo-description=A%20Professional%20AI%20headshot%20generator%20starter%20kit%20powered%20by%20Next.js%2C%20Leap%20AI%2C%20and%20Vercel&demo-url=https%3A%2F%2Fwww.getheadshots.ai%2F&demo-image=https%3A%2F%2Fimages.ctfassets.net%2Fe5382hct74si%2F1CEDfTwO5vPEiNMgN2Y1t6%2F245d1e0c11c4d8e734fbe345b9ecdc7c%2Fdemo.png&integration-ids=oac_VqOgBHqhEoFTPzGkPd7L0iH6&external-id=https%3A%2F%2Fgithub.com%2Fleap-ai%2Fheadshots-starter%2Ftree%2Fmain) for deployments
 - 💳 [Stripe](https://stripe.com/) for billing
@@ -110,16 +112,11 @@ Site URL: https://headshots-starter.vercel.app
 
 Redirect URL: https://headshots-starter.vercel.app/**
 
-### 6. Create a [Astria](https://www.astria.ai/) account
+### 6. Create a [fal.ai](https://fal.ai/) account
 
-In your `.env.local` file:
+- Create an API key at [fal.ai/dashboard/keys](https://fal.ai/dashboard/keys) and add it to `.env.local` as `FAL_KEY`. Add credit to your fal account; each generation is billed per image.
+- Fill in `your-blob-read-write-token` with your Vercel Blob token (steps below).
 
-- Fill in `your_api_key` with your [Astria API key](https://www.astria.ai/users/edit#api)
-- Fill in `your-webhook-secret` with any arbitrary URL friendly string eg.`shadf892yr398hq23h`
-- Fill in `your-deployment-url` with a url to catch webhooks from Astria. This will be your vercel deployment url or Ngrok tunnel locally (eg. https://{your-hosted-url}/astria/train-webhook)
-- Fill in `your-blob-read-write-token` with your Vercel Blob token (steps below)
-
-If your production webhook callbacks do not seem to be working, make sure the callback URL is not of a Vercel dedicated branch deployment which requires authentication, in which case you will not see the callback in the logs.
 ### 7. Configure the Announcement Bar (Optional)
 
 To enable and customize the announcement bar at the top of your site, configure these environment variables in your `.env.local`:
@@ -143,13 +140,9 @@ Then to configure in your .env:
 - In your Vercel dashboard, select the Settings tab, then select the Environment Variables tab.
 - Copy your `BLOB_READ_WRITE_TOKEN` to your .env
 
-### 9. Create a [Resend](https://resend.com/) account (Optional)
+### 9. Configure [Stripe](https://stripe.com) to bill users on a credit basis. (Optional)
 
-- Fill in `your-resend-api-key` with your Resend API Key if you wish to use Resend to email users when their model has finished training.
-
-### 10. Configure [Stripe](https://stripe.com) to bill users on a credit basis. (Optional)
-
-The current setup is for a credit based system. 1 credit = 1 model train.
+The current setup is credit based. Each generated image costs credits depending on the AI model (see `creditsPerImage` in `lib/ai-models.ts`). A shoot is 2 images per style, so 4 styles with Nano Banana Pro cost 16 credits. Adjust your Stripe credit packs to match.
 
 To enable Stripe billing, you will need to fill out the following fields in your `.env.local` file:
 

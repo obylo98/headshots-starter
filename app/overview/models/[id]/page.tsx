@@ -1,7 +1,4 @@
-import Login from "@/app/login/page";
-import { Icons } from "@/components/icons";
 import ClientSideModel from "@/components/realtime/ClientSideModel";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Database } from "@/types/supabase";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
@@ -12,15 +9,13 @@ import { FaArrowLeft } from "react-icons/fa";
 
 export const dynamic = "force-dynamic";
 
-export default async function Index({ params }: { params: { id: string } }) {
+export default async function ShootPage({ params }: { params: { id: string } }) {
   const supabase = createServerComponentClient<Database>({ cookies });
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    return <Login />;
-  }
+  if (!user) redirect("/login");
 
   const { data: model } = await supabase
     .from("models")
@@ -29,43 +24,22 @@ export default async function Index({ params }: { params: { id: string } }) {
     .eq("user_id", user.id)
     .single();
 
-  if (!model) {
-    redirect("/overview");
-  }
+  if (!model) redirect("/overview");
 
-  const { data: images } = await supabase
-    .from("images")
-    .select("*")
-    .eq("modelId", model.id);
-
-  const { data: samples } = await supabase.from("samples").select("*").eq("modelId", model.id);
+  const [{ data: images }, { data: samples }] = await Promise.all([
+    supabase.from("images").select("*").eq("modelId", model.id).order("id"),
+    supabase.from("samples").select("*").eq("modelId", model.id),
+  ]);
 
   return (
-    <div id="train-model-container" className="w-full h-full">
-      <div className="flex flex-row gap-4">
-        <Link href="/overview" className="text-xs w-fit">
-          <Button variant={"outline"} className="text-xs" size="sm">
-            <FaArrowLeft className="mr-2" />
-            Go Back
-          </Button>
-        </Link>
-        <div className="flex flex-row gap-2 align-middle text-center items-center pb-4">
-          <h1 className="text-xl">{model.name}</h1>
-          <div>
-            <Badge
-              variant={model.status === "finished" ? "default" : "secondary"}
-              className="text-xs font-medium"
-            >
-              {model.status === "processing" ? "training" : model.status }
-              {model.status === "processing" && (
-                <Icons.spinner className="h-4 w-4 animate-spin ml-2 inline-block" />
-              )}
-            </Badge>
-          </div>
-        </div>
-      </div>
-
-      <ClientSideModel samples={samples ?? []} serverModel={model} serverImages={images ?? []} />
+    <div className="w-full h-full">
+      <Link href="/overview" className="text-xs w-fit">
+        <Button variant="outline" className="text-xs" size="sm">
+          <FaArrowLeft className="mr-2" />
+          Go Back
+        </Button>
+      </Link>
+      <ClientSideModel serverModel={model} serverImages={images ?? []} samples={samples ?? []} />
     </div>
   );
 }

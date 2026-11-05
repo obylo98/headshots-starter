@@ -1,353 +1,306 @@
 "use client";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useRouter } from "next/navigation";
-import { useCallback, useState, useEffect } from "react";
-import { useDropzone } from "react-dropzone";
-import { SubmitHandler, useForm } from "react-hook-form";
-import { FaFemale, FaImages, FaMale, FaRainbow } from "react-icons/fa";
-import * as z from "zod";
-import { fileUploadFormSchema } from "@/types/zod";
+import {
+  AI_MODELS,
+  AiModelId,
+  DEFAULT_AI_MODEL,
+  HEADSHOT_STYLES,
+  IMAGES_PER_STYLE,
+  MAX_REFERENCE_FILE_BYTES,
+  MAX_STYLES,
+  MIN_REFERENCE_IMAGES,
+  creditsForShoot,
+  getAiModel,
+} from "@/lib/ai-models";
+import { cn } from "@/lib/utils";
 import { upload } from "@vercel/blob/client";
-import axios from "axios";
-import { ImageInspector } from "./ImageInspector";
-import { ImageInspectionResult, aggregateCharacteristics } from "@/lib/imageInspection";
-
-type FormInput = z.infer<typeof fileUploadFormSchema>;
+import { Check, ImagePlus, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useDropzone } from "react-dropzone";
 
 const stripeIsConfigured = process.env.NEXT_PUBLIC_STRIPE_IS_ENABLED === "true";
 
-export default function TrainModelZone({ packSlug }: { packSlug: string }) {
-  const [files, setFiles] = useState<File[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [characteristics, setCharacteristics] = useState<ImageInspectionResult[]>([]);
+type SelectedFile = { file: File; preview: string };
+
+export default function GenerateHeadshotsZone() {
+  const [name, setName] = useState("");
+  const [aiModelId, setAiModelId] = useState<AiModelId>(DEFAULT_AI_MODEL);
+  const [styles, setStyles] = useState<string[]>(["corporate", "office"]);
+  const [files, setFiles] = useState<SelectedFile[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [progress, setProgress] = useState("");
   const { toast } = useToast();
   const router = useRouter();
 
-  const form = useForm<FormInput>({
-    resolver: zodResolver(fileUploadFormSchema),
-    defaultValues: {
-      name: "",
-      type: "man",
-    },
-  });
+  const aiModel = getAiModel(aiModelId)!;
+  const maxFiles = aiModel.maxReferenceImages;
+  const cost = creditsForShoot(aiModel, styles.length);
+  const imageCount = styles.length * IMAGES_PER_STYLE;
 
-  const onSubmit: SubmitHandler<FormInput> = () => {
-    trainModel();
-  };
+  // Release object URLs when previews are removed / on unmount.
+  useEffect(() => () => files.forEach((f) => URL.revokeObjectURL(f.preview)), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onDrop = useCallback(
-    async (acceptedFiles: File[]) => {
-      const newFiles: File[] =
-        acceptedFiles.filter(
-          (file: File) => !files.some((f) => f.name === file.name)
-        ) || [];
-
-      // if user tries to upload more than 10 files, display a toast
-      if (newFiles.length + files.length > 10) {
-        toast({
-          title: "Too many images",
-          description:
-            "You can only upload up to 10 images in total. Please try again.",
-          duration: 5000,
-        });
-        return;
-      }
-
-      // display a toast if any duplicate files were found
-      if (newFiles.length !== acceptedFiles.length) {
-        toast({
-          title: "Duplicate file names",
-          description:
-            "Some of the files you selected were already added. They were ignored.",
-          duration: 5000,
-        });
-      }
-
-      // check that in total images do not exceed a combined 4.5MB
-      const totalSize = files.reduce((acc, file) => acc + file.size, 0);
-      const newSize = newFiles.reduce((acc, file) => acc + file.size, 0);
-
-      if (totalSize + newSize > 4.5 * 1024 * 1024) {
-        toast({
-          title: "Images exceed size limit",
-          description:
-            "The total combined size of the images cannot exceed 4.5MB.",
-          duration: 5000,
-        });
-        return;
-      }
-
-      setFiles([...files, ...newFiles]);
-
-      toast({
-        title: "Images selected",
-        description: "The images were successfully selected.",
-        duration: 5000,
+    (accepted: File[]) => {
+      setFiles((current) => {
+        const fresh = accepted.filter(
+          (file) => !current.some((f) => f.file.name === file.name && f.file.size === file.size)
+        );
+        const tooBig = fresh.filter((f) => f.size > MAX_REFERENCE_FILE_BYTES);
+        if (tooBig.length) {
+          toast({ title: "Some photos are too large", description: "Each photo must be under 10MB." });
+        }
+        const ok = fresh.filter((f) => f.size <= MAX_REFERENCE_FILE_BYTES);
+        const room = maxFiles - current.length;
+        if (ok.length > room) {
+          toast({ title: "Too many photos", description: `You can upload up to ${maxFiles} photos.` });
+        }
+        return [
+          ...current,
+          ...ok.slice(0, Math.max(room, 0)).map((file) => ({ file, preview: URL.createObjectURL(file) })),
+        ];
       });
     },
-    [files]
+    [maxFiles, toast]
   );
 
-  const removeFile = useCallback(
-    (file: File) => {
-      setFiles(files.filter((f) => f.name !== file.name));
-    },
-    [files]
-  );
-
-  const handleInspectionComplete = (result: ImageInspectionResult, file: File) => {
-    setCharacteristics(prev => [...prev, result]);
+  const removeFile = (target: SelectedFile) => {
+    URL.revokeObjectURL(target.preview);
+    setFiles((current) => current.filter((f) => f !== target));
   };
 
-  const trainModel = useCallback(async () => {
-    setIsLoading(true);
-    // Upload each file to Vercel blob and store the resulting URLs
-    const blobUrls = [];
-
-    if (files) {
-      for (const file of files) {
-        const blob = await upload(file.name, file, {
-          access: "public",
-          handleUploadUrl: "/astria/train-model/image-upload",
-        });
-        blobUrls.push(blob.url);
+  const toggleStyle = (id: string) => {
+    setStyles((current) => {
+      if (current.includes(id)) return current.filter((s) => s !== id);
+      if (current.length >= MAX_STYLES) {
+        toast({ title: `Pick up to ${MAX_STYLES} styles` });
+        return current;
       }
-    }
-
-    // console.log(blobUrls, "blobUrls");
-    const aggregatedCharacteristics = aggregateCharacteristics(characteristics);
-
-    const payload = {
-      urls: blobUrls,
-      name: form.getValues("name").trim(),
-      type: form.getValues("type"),
-      pack: packSlug,
-      characteristics: aggregatedCharacteristics
-    };
-
-    // Send the JSON payload to the "/astria/train-model" endpoint
-    const response = await fetch("/astria/train-model", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
+      return [...current, id];
     });
-
-    setIsLoading(false);
-
-    if (!response.ok) {
-      const responseData = await response.json();
-      const responseMessage: string = responseData.message;
-      console.error("Something went wrong! ", responseMessage);
-      const messageWithButton = (
-        <div className="flex flex-col gap-4">
-          {responseMessage}
-          <a href="/get-credits">
-            <Button size="sm">Get Credits</Button>
-          </a>
-        </div>
-      );
-      toast({
-        title: "Something went wrong!",
-        description: responseMessage.includes("Not enough credits")
-          ? messageWithButton
-          : responseMessage,
-        duration: 5000,
-      });
-      return;
-    }
-
-    toast({
-      title: "Model queued for training",
-      description:
-        "The model was queued for training. You will receive an email when the model is ready to use.",
-      duration: 5000,
-    });
-
-    router.push("/");
-  }, [files, characteristics, form, packSlug]);
+  };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
       "image/png": [".png"],
       "image/jpeg": [".jpg", ".jpeg"],
+      "image/webp": [".webp"],
     },
+    disabled: isSubmitting,
   });
 
-  const modelType = form.watch("type");
+  const validationError = useMemo(() => {
+    if (!name.trim()) return "Give your shoot a name";
+    if (files.length < MIN_REFERENCE_IMAGES) return "Add at least one photo of yourself";
+    if (styles.length === 0) return "Pick at least one style";
+    return null;
+  }, [name, files.length, styles.length]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (validationError) {
+      toast({ title: validationError });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      setProgress("Uploading photos…");
+      const blobs = await Promise.all(
+        files.map(({ file }) =>
+          upload(`selfies/${file.name}`, file, {
+            access: "public",
+            handleUploadUrl: "/api/upload",
+          })
+        )
+      );
+
+      setProgress("Starting generation…");
+      const response = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          aiModel: aiModelId,
+          styles,
+          imageUrls: blobs.map((b) => b.url),
+        }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        const message: string = data.message ?? "Something went wrong";
+        toast({
+          title: "Couldn't start your shoot",
+          description:
+            response.status === 402 ? (
+              <div className="flex flex-col gap-4">
+                {message}
+                <a href="/get-credits">
+                  <Button size="sm">Get Credits</Button>
+                </a>
+              </div>
+            ) : (
+              message
+            ),
+          duration: 6000,
+        });
+        return;
+      }
+
+      toast({ title: "Generating your headshots", description: "This usually takes under a minute." });
+      router.push(`/overview/models/${data.id}`);
+      router.refresh();
+    } catch (err) {
+      console.error(err);
+      toast({ title: "Upload failed", description: "Please check your connection and try again." });
+    } finally {
+      setIsSubmitting(false);
+      setProgress("");
+    }
+  };
 
   return (
-    <div>
-      <Form {...form}>
-        <form
-          onSubmit={form.handleSubmit(onSubmit)}
-          className="rounded-md flex flex-col gap-8"
-        >
-          <FormField
-            control={form.control}
-            name="name"
-            render={({ field }) => (
-              <FormItem className="w-full rounded-md">
-                <FormLabel>Name</FormLabel>
-                <FormDescription>
-                  Give your model a name so you can easily identify it later.
-                </FormDescription>
-                <FormControl>
-                  <Input
-                    placeholder="e.g. Natalie Headshots"
-                    {...field}
-                    className="max-w-screen-sm"
-                    autoComplete="off"
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <div className="flex flex-col gap-4">
-            <FormLabel>Type</FormLabel>
-            <FormDescription>
-              Select the type of headshots you want to generate.
-            </FormDescription>
-            <RadioGroup
-              defaultValue={modelType}
-              className="grid grid-cols-3 gap-4"
-              value={modelType}
-              onValueChange={(value) => {
-                form.setValue("type", value);
-              }}
-            >
-              <div>
-                <RadioGroupItem
-                  value="man"
-                  id="man"
-                  className="peer sr-only"
-                  aria-label="man"
-                />
-                <Label
-                  htmlFor="man"
-                  className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-transparent p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary"
-                >
-                  <FaMale className="mb-3 h-6 w-6" />
-                  Man
-                </Label>
-              </div>
+    <form onSubmit={submit} className="flex flex-col gap-8">
+      {/* Name */}
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="shoot-name">Name</Label>
+        <p className="text-sm text-muted-foreground">So you can find this shoot later.</p>
+        <Input
+          id="shoot-name"
+          placeholder="e.g. LinkedIn refresh"
+          value={name}
+          maxLength={50}
+          autoComplete="off"
+          onChange={(e) => setName(e.target.value)}
+        />
+      </div>
 
-              <div>
-                <RadioGroupItem
-                  value="woman"
-                  id="woman"
-                  className="peer sr-only"
-                  aria-label="woman"
-                />
-                <Label
-                  htmlFor="woman"
-                  className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-transparent p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary"
-                >
-                  <FaFemale className="mb-3 h-6 w-6" />
-                  Woman
-                </Label>
-              </div>
-              <div>
-                <RadioGroupItem
-                  value="person"
-                  id="person"
-                  className="peer sr-only"
-                  aria-label="person"
-                />
-                <Label
-                  htmlFor="person"
-                  className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-transparent p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary"
-                >
-                  <FaRainbow className="mb-3 h-6 w-6" />
-                  Unisex
-                </Label>
-              </div>
-            </RadioGroup>
-          </div>
-          <div
-            {...getRootProps()}
-            className=" rounded-md justify-center align-middle cursor-pointer flex flex-col gap-4"
-          >
-            <FormLabel>Samples</FormLabel>
-            <FormDescription>
-              Upload 4-10 images of the person you want to generate headshots
-              for.
-            </FormDescription>
-            <div className="outline-dashed outline-2 outline-gray-100 hover:outline-blue-500 w-full h-full rounded-md p-4 flex justify-center align-middle">
-              <input {...getInputProps()} />
-              {isDragActive ? (
-                <p className="self-center">Drop the files here ...</p>
-              ) : (
-                <div className="flex justify-center flex-col items-center gap-2">
-                  <FaImages size={32} className="text-gray-700" />
-                  <p className="self-center">
-                    Drag 'n' drop some files here, or click to select files.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-          {files.length > 0 && (
-            <div className="flex flex-row gap-4 flex-wrap">
-              {files.map((file) => (
-                <div key={file.name} className="flex flex-col gap-1">
-                  <div className="relative">
-                    <img
-                      src={URL.createObjectURL(file)}
-                      className="rounded-md w-24 h-24 object-cover"
-                      alt="Preview"
-                    />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full mt-1"
-                      onClick={() => removeFile(file)}
-                    >
-                      Remove
-                    </Button>
+      {/* AI model */}
+      <div className="flex flex-col gap-2">
+        <Label>AI model</Label>
+        <p className="text-sm text-muted-foreground">Each model has its own look. Try more than one.</p>
+        <div role="radiogroup" className="grid gap-3 sm:grid-cols-3">
+          {AI_MODELS.map((m) => {
+            const selected = m.id === aiModelId;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => setAiModelId(m.id)}
+                className={cn(
+                  "relative flex flex-col gap-1 rounded-lg border-2 p-4 text-left transition-colors hover:bg-accent",
+                  selected ? "border-primary" : "border-muted"
+                )}
+              >
+                {m.badge && (
+                  <Badge variant="secondary" className="w-fit text-[10px] mb-1">
+                    {m.badge}
+                  </Badge>
+                )}
+                <span className="font-semibold">{m.name}</span>
+                <span className="text-xs text-muted-foreground">{m.provider}</span>
+                <span className="text-xs mt-1">{m.description}</span>
+                {stripeIsConfigured && (
+                  <span className="text-xs text-muted-foreground mt-2">
+                    {m.creditsPerImage} credit{m.creditsPerImage > 1 ? "s" : ""} / image
+                  </span>
+                )}
+                {selected && <Check className="absolute right-3 top-3 h-4 w-4 text-primary" />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
-                    <ImageInspector
-                      file={file}
-                      type={form.getValues("type")}
-                      onInspectionComplete={(result) => handleInspectionComplete(result, file)}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
+      {/* Styles */}
+      <div className="flex flex-col gap-2">
+        <Label>Styles</Label>
+        <p className="text-sm text-muted-foreground">
+          Pick up to {MAX_STYLES}. You get {IMAGES_PER_STYLE} headshots per style.
+        </p>
+        <div className="grid gap-2 grid-cols-2 sm:grid-cols-3">
+          {HEADSHOT_STYLES.map((s) => {
+            const selected = styles.includes(s.id);
+            return (
+              <button
+                key={s.id}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => toggleStyle(s.id)}
+                className={cn(
+                  "flex flex-col rounded-md border-2 px-3 py-2 text-left transition-colors hover:bg-accent",
+                  selected ? "border-primary" : "border-muted"
+                )}
+              >
+                <span className="text-sm font-medium">{s.name}</span>
+                <span className="text-xs text-muted-foreground">{s.description}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Photos */}
+      <div className="flex flex-col gap-2">
+        <Label>Your photos</Label>
+        <p className="text-sm text-muted-foreground">
+          Upload {MIN_REFERENCE_IMAGES}–{maxFiles} clear photos of your face. Best results come from 3–6 photos:
+          different angles, good light, no sunglasses or hats, and only you in the frame.
+        </p>
+        <div
+          {...getRootProps()}
+          className={cn(
+            "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed p-8 text-center transition-colors",
+            isDragActive ? "border-primary bg-accent" : "border-muted hover:border-primary"
           )}
+        >
+          <input {...getInputProps()} />
+          <ImagePlus className="h-8 w-8 text-muted-foreground" />
+          <p className="text-sm">{isDragActive ? "Drop your photos here…" : "Drag photos here, or click to choose"}</p>
+          <p className="text-xs text-muted-foreground">JPG, PNG or WebP · up to 10MB each</p>
+        </div>
 
-          <Button type="submit" className="w-full" disabled={isLoading}>
-            Train Model{" "}
-            {stripeIsConfigured && <span className="ml-1">(1 Credit)</span>}
-          </Button>
-        </form>
-      </Form>
-    </div>
+        {files.length > 0 && (
+          <div className="flex flex-wrap gap-3 pt-2">
+            {files.map((f) => (
+              <div key={f.preview} className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={f.preview} alt={f.file.name} className="h-24 w-24 rounded-md object-cover" />
+                <button
+                  type="button"
+                  onClick={() => removeFile(f)}
+                  disabled={isSubmitting}
+                  aria-label={`Remove ${f.file.name}`}
+                  className="absolute -right-2 -top-2 rounded-full bg-background border p-1 shadow hover:bg-accent"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Button type="submit" className="w-full" isLoading={isSubmitting} disabled={isSubmitting}>
+          {isSubmitting
+            ? progress
+            : `Generate ${imageCount} headshots${stripeIsConfigured ? ` · ${cost} credits` : ""}`}
+        </Button>
+        {validationError && !isSubmitting && (
+          <p className="text-center text-xs text-muted-foreground">{validationError}</p>
+        )}
+      </div>
+    </form>
   );
 }
