@@ -8,6 +8,11 @@ import { Analytics } from "@vercel/analytics/react";
 import { ThemeProvider } from "@/components/homepage/theme-provider"
 import { validateConfig } from "@/lib/config";
 
+// The Navbar reads the auth cookie on every page, so nothing can be
+// prerendered statically. Declaring it avoids Next.js attempting (and
+// logging "Dynamic server usage" errors) during `next build`.
+export const dynamic = "force-dynamic";
+
 // Validate configuration at app initialization
 validateConfig();
 
