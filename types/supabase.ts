@@ -120,6 +120,7 @@ export interface Database {
           id: number
           modelId: string | null
           name: string | null
+          outfit: Json | null
           status: string
           styles: string[]
           type: string | null
@@ -133,6 +134,7 @@ export interface Database {
           id?: number
           modelId?: string | null
           name?: string | null
+          outfit?: Json | null
           status?: string
           styles?: string[]
           type?: string | null
@@ -146,6 +148,7 @@ export interface Database {
           id?: number
           modelId?: string | null
           name?: string | null
+          outfit?: Json | null
           status?: string
           styles?: string[]
           type?: string | null

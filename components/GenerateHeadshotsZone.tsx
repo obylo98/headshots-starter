@@ -14,9 +14,11 @@ import {
   MAX_REFERENCE_FILE_BYTES,
   MAX_STYLES,
   MIN_REFERENCE_IMAGES,
+  OutfitOptions,
   creditsForShoot,
   getAiModel,
 } from "@/lib/ai-models";
+import OutfitPicker from "./OutfitPicker";
 import { cn } from "@/lib/utils";
 import { upload } from "@vercel/blob/client";
 import { Check, ImagePlus, X } from "lucide-react";
@@ -33,6 +35,7 @@ export default function GenerateHeadshotsZone() {
   const [aiModelId, setAiModelId] = useState<AiModelId>(DEFAULT_AI_MODEL);
   const [styles, setStyles] = useState<string[]>(["corporate", "office"]);
   const [files, setFiles] = useState<SelectedFile[]>([]);
+  const [outfit, setOutfit] = useState<OutfitOptions>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [progress, setProgress] = useState("");
   const { toast } = useToast();
@@ -130,6 +133,7 @@ export default function GenerateHeadshotsZone() {
           name: name.trim(),
           aiModel: aiModelId,
           styles,
+          outfit,
           imageUrls: blobs.map((b) => b.url),
         }),
       });
@@ -249,6 +253,9 @@ export default function GenerateHeadshotsZone() {
           })}
         </div>
       </div>
+
+      {/* Optional outfit */}
+      <OutfitPicker value={outfit} onChange={setOutfit} disabled={isSubmitting} />
 
       {/* Photos */}
       <div className="flex flex-col gap-2">

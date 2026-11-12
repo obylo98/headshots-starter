@@ -144,6 +144,18 @@ export const HEADSHOT_STYLES: HeadshotStyle[] = [
     prompt:
       "wearing a neat collared shirt or blouse, clean white background, bright soft lighting, friendly confident smile",
   },
+  {
+    // Modelled on a reference corporate portrait (styling only, never the face).
+    id: "executive-window",
+    name: "Executive window",
+    description: "Navy suit, bright office window, plant",
+    prompt:
+      "wearing a tailored navy-blue suit jacket over a crisp white shirt with a silver-grey textured tie (or, for women, a navy blazer over a white blouse), " +
+      "standing in a bright modern office with a large floor-to-ceiling window softly out of focus on the left and a blurred green potted plant on the right, " +
+      "light neutral grey-white walls, soft diffused natural daylight from the side window, gentle even skin tones with no harsh shadows, " +
+      "shallow depth of field with creamy background blur, warm genuine broad smile showing teeth, relaxed and approachable, " +
+      "eye-level camera, centred tight head-and-shoulders crop, polished corporate profile photo",
+  },
 ];
 
 export function getHeadshotStyle(id: string): HeadshotStyle | undefined {
@@ -157,15 +169,118 @@ export const MIN_REFERENCE_IMAGES = 1;
 export const MAX_REFERENCE_IMAGES = 10;
 export const MAX_REFERENCE_FILE_BYTES = 10 * 1024 * 1024;
 
-export function buildHeadshotPrompt(style: HeadshotStyle): string {
+export function buildHeadshotPrompt(style: HeadshotStyle, outfit?: OutfitOptions | null): string {
   // Phrased as a plain photo-editing instruction: heavy "preserve identity"
   // wording makes some models (notably Nano Banana Pro) refuse more often.
   return [
     "Turn the person in these photos into a professional studio headshot.",
     "Keep their face, hairstyle, skin tone and age the same so they look like themselves.",
     `They are ${style.prompt}.`,
+    outfitSentence(outfit),
     "Head-and-shoulders portrait, looking at the camera, sharp focus, natural skin texture, realistic photo taken with an 85mm lens.",
-  ].join(" ");
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+// ---------------------------------------------------------------------------
+// Optional outfit customisation. Every field is optional: anything left unset
+// keeps the clothing described by the chosen style.
+
+export type ColorOption = { id: string; name: string; hex: string };
+
+export const SUIT_COLORS: ColorOption[] = [
+  { id: "navy", name: "Navy", hex: "#1f2a44" },
+  { id: "charcoal", name: "Charcoal", hex: "#36454f" },
+  { id: "black", name: "Black", hex: "#111111" },
+  { id: "mid-grey", name: "Mid grey", hex: "#7d7d7d" },
+  { id: "light-grey", name: "Light grey", hex: "#c4c4c4" },
+  { id: "beige", name: "Beige", hex: "#d8c3a5" },
+  { id: "brown", name: "Brown", hex: "#6b4f3a" },
+  { id: "burgundy", name: "Burgundy", hex: "#6d1a36" },
+  { id: "olive", name: "Olive green", hex: "#556b2f" },
+  { id: "white", name: "White", hex: "#f5f5f5" },
+];
+
+export const SHIRT_COLORS: ColorOption[] = [
+  { id: "white", name: "White", hex: "#ffffff" },
+  { id: "light-blue", name: "Light blue", hex: "#cfe2f3" },
+  { id: "pale-pink", name: "Pale pink", hex: "#f4d4d4" },
+  { id: "cream", name: "Cream", hex: "#f7efd9" },
+  { id: "lavender", name: "Lavender", hex: "#e3dcf5" },
+  { id: "grey", name: "Grey", hex: "#9e9e9e" },
+  { id: "black", name: "Black", hex: "#111111" },
+];
+
+export const TIE_COLORS: ColorOption[] = [
+  { id: "silver-grey", name: "Silver grey", hex: "#a9a9a9" },
+  { id: "navy", name: "Navy", hex: "#1f2a44" },
+  { id: "black", name: "Black", hex: "#111111" },
+  { id: "burgundy", name: "Burgundy", hex: "#6d1a36" },
+  { id: "red", name: "Red", hex: "#b22222" },
+  { id: "royal-blue", name: "Royal blue", hex: "#2a52be" },
+  { id: "green", name: "Green", hex: "#2e6b3f" },
+  { id: "gold", name: "Gold", hex: "#c9a43a" },
+];
+
+export type TieChoice = "tie" | "no-tie";
+
+export type OutfitOptions = {
+  suitColor?: string;
+  shirtColor?: string;
+  tie?: TieChoice;
+  tieColor?: string;
+};
+
+const colorName = (list: ColorOption[], id?: string) =>
+  list.find((c) => c.id === id)?.name.toLowerCase();
+
+/** Drops unknown/empty values. Returns null when nothing is customised. */
+export function sanitizeOutfit(input: unknown): OutfitOptions | null {
+  if (!input || typeof input !== "object") return null;
+  const raw = input as Record<string, unknown>;
+  const pick = (list: ColorOption[], v: unknown) =>
+    typeof v === "string" && list.some((c) => c.id === v) ? v : undefined;
+
+  const outfit: OutfitOptions = {
+    suitColor: pick(SUIT_COLORS, raw.suitColor),
+    shirtColor: pick(SHIRT_COLORS, raw.shirtColor),
+    tie: raw.tie === "tie" || raw.tie === "no-tie" ? raw.tie : undefined,
+  };
+  if (outfit.tie === "tie") outfit.tieColor = pick(TIE_COLORS, raw.tieColor);
+
+  const clean = Object.fromEntries(Object.entries(outfit).filter(([, v]) => v)) as OutfitOptions;
+  return Object.keys(clean).length ? clean : null;
+}
+
+/** Short human summary, e.g. "Charcoal suit · White shirt · Navy tie". */
+export function describeOutfit(outfit: OutfitOptions | null | undefined): string[] {
+  if (!outfit) return [];
+  const parts: string[] = [];
+  const suit = SUIT_COLORS.find((c) => c.id === outfit.suitColor)?.name;
+  const shirt = SHIRT_COLORS.find((c) => c.id === outfit.shirtColor)?.name;
+  const tie = TIE_COLORS.find((c) => c.id === outfit.tieColor)?.name;
+  if (suit) parts.push(`${suit} suit`);
+  if (shirt) parts.push(`${shirt} shirt`);
+  if (outfit.tie === "no-tie") parts.push("No tie");
+  if (outfit.tie === "tie") parts.push(tie ? `${tie} tie` : "Tie");
+  return parts;
+}
+
+function outfitSentence(outfit: OutfitOptions | null | undefined): string | null {
+  if (!outfit) return null;
+  const clauses: string[] = [];
+  const suit = colorName(SUIT_COLORS, outfit.suitColor);
+  const shirt = colorName(SHIRT_COLORS, outfit.shirtColor);
+  if (suit) clauses.push(`a ${suit} suit jacket (or ${suit} blazer for women)`);
+  if (shirt) clauses.push(`a ${shirt} shirt or blouse`);
+  if (outfit.tie === "no-tie") clauses.push("no tie, with an open collar");
+  if (outfit.tie === "tie") {
+    const tie = colorName(TIE_COLORS, outfit.tieColor);
+    clauses.push(tie ? `a ${tie} tie` : "a tie");
+  }
+  if (!clauses.length) return null;
+  return `Clothing (this overrides any clothing described above): they are wearing ${clauses.join(", ")}.`;
 }
 
 export function creditsForShoot(model: AiModel, styleCount: number): number {

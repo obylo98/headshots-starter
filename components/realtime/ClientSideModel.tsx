@@ -3,7 +3,13 @@
 import { Icons } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { IMAGES_PER_STYLE, getAiModel, getHeadshotStyle } from "@/lib/ai-models";
+import {
+  IMAGES_PER_STYLE,
+  describeOutfit,
+  getAiModel,
+  getHeadshotStyle,
+  sanitizeOutfit,
+} from "@/lib/ai-models";
 import { imageRow, modelRow, sampleRow } from "@/types/utils";
 import { Download } from "lucide-react";
 import Link from "next/link";
@@ -78,6 +84,11 @@ export default function ClientSideModel({ serverModel, serverImages, samples }: 
         {model.styles?.map((id) => (
           <Badge key={id} variant="outline" className="font-normal">
             {getHeadshotStyle(id)?.name ?? id}
+          </Badge>
+        ))}
+        {describeOutfit(sanitizeOutfit(model.outfit)).map((part) => (
+          <Badge key={part} variant="secondary" className="font-normal">
+            {part}
           </Badge>
         ))}
       </div>

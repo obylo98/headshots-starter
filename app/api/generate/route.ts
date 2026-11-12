@@ -5,6 +5,7 @@ import {
   MIN_REFERENCE_IMAGES,
   buildHeadshotPrompt,
   creditsForShoot,
+  sanitizeOutfit,
   getAiModel,
   getHeadshotStyle,
 } from "@/lib/ai-models";
@@ -39,6 +40,7 @@ const bodySchema = z.object({
     .max(MAX_STYLES)
     .refine((ids) => ids.every((id) => HEADSHOT_STYLES.some((s) => s.id === id)), "Unknown style")
     .refine((ids) => new Set(ids).size === ids.length, "Duplicate style"),
+  outfit: z.unknown().optional(),
   imageUrls: z
     .array(z.string().refine(isBlobUrl, "Invalid image URL"))
     .min(MIN_REFERENCE_IMAGES),
@@ -62,6 +64,7 @@ export async function POST(request: Request) {
     return json(parsed.error.issues[0]?.message ?? "Invalid request", 400);
   }
   const { name, styles, imageUrls } = parsed.data;
+  const outfit = sanitizeOutfit(parsed.data.outfit);
 
   const aiModel = getAiModel(parsed.data.aiModel);
   if (!aiModel) return json("Unknown AI model", 400);
@@ -103,6 +106,7 @@ export async function POST(request: Request) {
       ai_model: aiModel.id,
       styles,
       credits_used: cost,
+      ...(outfit ? { outfit } : {}),
       status: "processing",
     })
     .select("id")
@@ -123,7 +127,7 @@ export async function POST(request: Request) {
       const style = getHeadshotStyle(styleId)!;
       const { request_id } = await fal.queue.submit(aiModel.endpoint, {
         input: aiModel.buildInput({
-          prompt: buildHeadshotPrompt(style),
+          prompt: buildHeadshotPrompt(style, outfit),
           imageUrls,
           numImages: IMAGES_PER_STYLE,
         }) as never,

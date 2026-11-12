@@ -1,6 +1,6 @@
 import "server-only";
 
-import { buildHeadshotPrompt, getAiModel, getHeadshotStyle } from "@/lib/ai-models";
+import { buildHeadshotPrompt, getAiModel, getHeadshotStyle, sanitizeOutfit } from "@/lib/ai-models";
 import { AdminClient, getFal } from "@/lib/server/clients";
 import { generationRequestRow as GenerationRequest } from "@/types/utils";
 import { put } from "@vercel/blob";
@@ -63,7 +63,7 @@ async function retryOrFail(admin: AdminClient, req: GenerationRequest, error: st
 
   try {
     const [{ data: shoot }, { data: samples }] = await Promise.all([
-      admin.from("models").select("ai_model").eq("id", req.model_id).single(),
+      admin.from("models").select("*").eq("id", req.model_id).single(),
       admin.from("samples").select("uri").eq("modelId", req.model_id),
     ]);
     const aiModel = getAiModel(shoot?.ai_model);
@@ -71,7 +71,7 @@ async function retryOrFail(admin: AdminClient, req: GenerationRequest, error: st
 
     const { request_id } = await getFal().queue.submit(aiModel.endpoint, {
       input: aiModel.buildInput({
-        prompt: buildHeadshotPrompt(style),
+        prompt: buildHeadshotPrompt(style, sanitizeOutfit(shoot?.outfit)),
         imageUrls: samples.map((s) => s.uri),
         numImages: req.num_images,
       }) as never,

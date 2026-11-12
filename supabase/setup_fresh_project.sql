@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS public.models (
   ai_model      text,
   styles        text[] NOT NULL DEFAULT '{}',
   credits_used  integer NOT NULL DEFAULT 0,
-  error         text
+  error         text,
+  outfit        jsonb                               -- optional suit/shirt/tie choices
 );
 CREATE INDEX IF NOT EXISTS models_user_id_idx ON public.models (user_id);
 
